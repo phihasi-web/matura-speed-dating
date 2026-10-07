@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Matura Speed Dating 🎲</title>
+<style>
+:root{--bg:#f7f4ef;--card:#fff;--text:#202124;--muted:#777;--accent:#6c5ce7;--accent2:#ff7675}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(135deg,#f7f4ef,#eee9ff);font-family:Inter,system-ui,-apple-system,sans-serif;color:var(--text);min-height:100vh}
+.wrap{max-width:760px;margin:auto;padding:28px 18px 60px}.brand{text-align:center;margin:18px 0 28px}.brand h1{font-size:clamp(32px,8vw,58px);margin:0 0 8px;letter-spacing:-2px}.brand p{color:var(--muted);margin:0}
+.card{background:rgba(255,255,255,.9);border:1px solid #eee;border-radius:24px;padding:22px;margin:16px 0;box-shadow:0 12px 35px #0000000b}
+h2{margin-top:0}input,textarea{width:100%;border:1px solid #ddd;border-radius:14px;padding:14px;font:inherit;background:#fff}textarea{min-height:100px;resize:vertical}
+button{border:0;border-radius:14px;padding:13px 18px;font:700 16px inherit;cursor:pointer;background:var(--accent);color:#fff}button.secondary{background:#eee;color:#333}button.danger{background:#ffeded;color:#b42318}.row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.row>*{flex:1}
+.code{font-size:30px;font-weight:800;letter-spacing:6px;text-align:center;padding:10px;background:#f2efff;border-radius:16px}.question{font-size:clamp(26px,6vw,44px);font-weight:750;line-height:1.15;text-align:center;padding:32px 10px}.count{text-align:center;color:var(--muted);font-size:14px}.hidden{display:none!important}.tag{display:inline-block;padding:5px 9px;border-radius:999px;background:#eee;color:#666;font-size:12px}.small{font-size:13px;color:var(--muted);line-height:1.5}
+#questions{max-height:360px;overflow:auto}.qitem{padding:12px 0;border-bottom:1px solid #eee}.qitem:last-child{border-bottom:0}
+.center{text-align:center}.big{width:100%;font-size:20px;padding:17px}.notice{padding:12px;border-radius:12px;background:#fff7df;color:#745b00;margin:10px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <div style="font-size:42px">🎲</div>
+    <h1>Matura Speed Dating</h1>
+    <p>10 Jahre später – Zeit für gute Fragen.</p>
+  </div>
+
+  <section id="start" class="card">
+    <h2>Session starten</h2>
+    <p class="small">Als Organisator erstellst du einen Raum. Danach kannst du den Link bzw. QR-Code an alle schicken.</p>
+    <button class="big" onclick="createRoom()">🎉 Neue Session erstellen</button>
+    <div class="row">
+      <input id="joinCode" placeholder="Code eingeben, z. B. ABC123" maxlength="6">
+      <button class="secondary" onclick="joinRoom()">Beitreten</button>
+    </div>
+  </section>
+
+  <section id="room" class="hidden">
+    <div class="card center">
+      <span class="tag" id="roleTag"></span>
+      <h2>Raum</h2>
+      <div class="code" id="roomCode"></div>
+      <p class="small">Teile diesen Code oder die aktuelle Seitenadresse mit den anderen.</p>
+      <button class="secondary" onclick="copyLink()">🔗 Link kopieren</button>
+    </div>
+
+    <div id="participant" class="card hidden">
+      <h2>🎲 Deine Speed-Dating-Frage</h2>
+      <div id="myDrawn" class="question">Drück den Button – du bekommst deine eigene zufällige Frage.</div>
+      <button class="big" onclick="drawMyQuestion()">🎲 Frage ziehen</button>
+      <p class="small">Deine gezogene Frage ist unabhängig von den anderen. Zwei Personen können theoretisch dieselbe Frage bekommen.</p>
+    </div>
+
+    <div id="submitCard" class="card hidden">
+      <h2>Frage in den Pool werfen</h2>
+      <textarea id="questionInput" maxlength="240" placeholder="z. B. Was war dein größter Fehltritt seit der Matura?"></textarea>
+      <button class="big" onclick="submitQuestion()">➕ Frage hinzufügen</button>
+      <p id="submitMsg" class="small"></p>
+    </div>
+
+    <div id="moderator" class="hidden">
+      <div class="card">
+        <h2>🎲 Zufällige Frage</h2>
+        <div id="drawn" class="question">Drück den Button – du bekommst deine eigene zufällige Frage.</div>
+        <button class="big" onclick="drawQuestion()">🎲 Frage ziehen</button>
+        <p class="count" id="count"></p>
+      </div>
+      <div class="card">
+        <h2>Fragenpool</h2>
+        <div id="questions"></div>
+        <div class="row">
+          <button class="secondary" onclick="clearUsed()">♻️ Gezogene Fragen zurücksetzen</button>
+          <button class="danger" onclick="clearAll()">🗑️ Alle Fragen löschen</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js";
+import { getDatabase, ref, set, push, onValue, remove, update } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-database.js";
+
+/* =========================
+   FIREBASE KONFIGURATION
+   Hier deine Firebase-Daten einsetzen.
+   ========================= */
+const firebaseConfig = {
+  apiKey: "DEINE_API_KEY",
+  authDomain: "DEIN_PROJEKT.firebaseapp.com",
+  databaseURL: "https://DEIN_PROJEKT-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "DEIN_PROJEKT",
+  storageBucket: "DEIN_PROJEKT.firebasestorage.app",
+  messagingSenderId: "DEINE_MESSAGING_ID",
+  appId: "DEINE_APP_ID"
+};
+
+let db, roomId, moderator=false, questionsRef;
+
+function configured(){
+  return !firebaseConfig.apiKey.startsWith("DEINE_") && !firebaseConfig.projectId.startsWith("DEIN_");
+}
+window.createRoom = async () => {
+  if(!configured()){ alert("Bitte zuerst die Firebase-Konfiguration in index.html eintragen. Die Anleitung liegt in README.txt."); return; }
+  db=getDatabase(initializeApp(firebaseConfig));
+  roomId=Math.random().toString(36).slice(2,8).toUpperCase();
+  moderator=true; localStorage.setItem("maturaRoom",roomId); localStorage.setItem("maturaMod","1");
+  await set(ref(db,"rooms/"+roomId),{createdAt:Date.now(),drawn:null});
+  openRoom();
+};
+window.joinRoom = async () => {
+  const code=document.getElementById("joinCode").value.trim().toUpperCase();
+  if(code.length!==6){alert("Bitte den 6-stelligen Code eingeben.");return}
+  if(!configured()){alert("Bitte zuerst die Firebase-Konfiguration in index.html eintragen.");return}
+  db=getDatabase(initializeApp(firebaseConfig)); roomId=code; moderator=false; openRoom();
+};
+function openRoom(){
+  document.getElementById("start").classList.add("hidden");
+  document.getElementById("room").classList.remove("hidden");
+  document.getElementById("roomCode").textContent=roomId;
+  document.getElementById("roleTag").textContent=moderator?"MODERATOR":"TEILNEHMER";
+  document.getElementById("participant").classList.remove("hidden");
+  document.getElementById("submitCard").classList.remove("hidden");
+  document.getElementById("moderator").classList.toggle("hidden",!moderator);
+  questionsRef=ref(db,"rooms/"+roomId+"/questions");
+  onValue(questionsRef,snap=>{
+    const data=snap.val()||{};
+    const qs=Object.entries(data).map(([id,q])=>({id,...q}));
+    renderQuestions(qs);
+  });
+  onValue(ref(db,"rooms/"+roomId+"/drawn"),snap=>{
+    document.getElementById("drawn").textContent=snap.val()||"Drück den Button – du bekommst deine eigene zufällige Frage.";
+  });
+}
+window.submitQuestion=async()=>{
+  const el=document.getElementById("questionInput"), text=el.value.trim();
+  if(!text)return;
+  await push(questionsRef,{text,used:false,createdAt:Date.now()});
+  el.value=""; document.getElementById("submitMsg").textContent="✓ Frage ist im Pool!";
+};
+function renderQuestions(qs){
+  const available=qs.filter(q=>!q.used);
+  document.getElementById("count").textContent=available.length+" nicht gezogene Frage"+(available.length===1?"":"n")+" im Pool";
+  document.getElementById("questions").innerHTML=qs.length?qs.slice().reverse().map(q=>`<div class="qitem">${escapeHtml(q.text)} ${q.used?'<span class="tag">gezogen</span>':''}</div>`).join(""):"<p class='small'>Noch keine Fragen.</p>";
+}
+
+let myId=localStorage.getItem("maturaParticipantId");
+if(!myId){myId=crypto.randomUUID();localStorage.setItem("maturaParticipantId",myId);}
+let myHistory=JSON.parse(localStorage.getItem("maturaDrawn_"+(roomId||""))||"[]");
+
+window.drawMyQuestion=async()=>{
+  const snap=await new Promise(resolve=>onValue(questionsRef,resolve,{onlyOnce:true}));
+  const data=snap.val()||{};
+  const qs=Object.entries(data).map(([id,q])=>({id,...q}));
+  if(!qs.length){alert("Noch keine Fragen im Pool.");return}
+  const available=qs.filter(q=>!myHistory.includes(q.id));
+  const pool=available.length?available:qs;
+  if(!available.length) myHistory=[];
+  const q=pool[Math.floor(Math.random()*pool.length)];
+  myHistory.push(q.id);
+  localStorage.setItem("maturaDrawn_"+roomId,JSON.stringify(myHistory));
+  document.getElementById("myDrawn").textContent=q.text;
+};
+window.drawQuestion=async()=>{
+  const snap=await new Promise(resolve=>onValue(questionsRef,resolve,{onlyOnce:true}));
+  const data=snap.val()||{};
+  const qs=Object.entries(data).filter(([id,q])=>!q.used);
+  if(!qs.length){alert("Keine ungezogenen Fragen mehr.");return}
+  const [id,q]=qs[Math.floor(Math.random()*qs.length)];
+  await update(ref(db,"rooms/"+roomId+"/questions/"+id),{used:true});
+  await set(ref(db,"rooms/"+roomId+"/drawn"),q.text);
+};
+window.clearUsed=async()=>{
+  const snap=await new Promise(resolve=>onValue(questionsRef,resolve,{onlyOnce:true}));
+  const data=snap.val()||{}; const u={};
+  for(const [id,q] of Object.entries(data))u[id]={...q,used:false};
+  await set(questionsRef,u);
+};
+window.clearAll=async()=>{if(confirm("Wirklich alle Fragen löschen?"))await remove(questionsRef)};
+window.copyLink=async()=>{await navigator.clipboard.writeText(location.origin+location.pathname+"?room="+roomId);alert("Link kopiert!")};
+function escapeHtml(s){return s.replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
+const params=new URLSearchParams(location.search), auto=params.get("room");
+if(auto){document.getElementById("joinCode").value=auto.toUpperCase(); setTimeout(()=>window.joinRoom(),100);}
+</script>
+</body>
+</html>
